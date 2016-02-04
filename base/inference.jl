@@ -1990,7 +1990,12 @@ function finish(me::InferenceState)
     # run optimization passes on fulltree
     if me.optimize
         if JLOptions().can_inline == 1
-            fulltree.args[3] = inlining_pass(fulltree.args[3], me, fulltree)[1]
+            locations = Array(Any, 0)
+            fulltree.args[3] = inlining_pass(fulltree.args[3], me, fulltree, locations)[1]
+            if !isempty(locations)
+                @assert(length(fulltree.args) == 3)
+                push!(fulltree.args, locations)
+            end
             # inlining can add variables
             me.vars = append_any(f_argnames(fulltree), map(vi->vi[1], fulltree.args[2][1]))
             inbounds_meta_elim_pass(fulltree.args[3])
@@ -2398,7 +2403,7 @@ end
 # static parameters are ok if all the static parameter values are leaf types,
 # meaning they are fully known.
 # `ft` is the type of the function. `f` is the exact function if known, or else `nothing`.
-function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::InferenceState, enclosing_ast::Expr)
+function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::InferenceState, enclosing_ast::Expr, locs)
     local linfo,
         metharg::Type,
         argexprs = e.args,
@@ -2840,6 +2845,7 @@ function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::Inference
     body = sym_replace(body, args, spnames, argexprs, spvals)
 
     # make labels / goto statements unique
+    # relocate inlining information
     newlabels = zeros(Int,label_counter(body.args)+1)
     for i = 1:length(body.args)
         a = body.args[i]
@@ -2848,6 +2854,9 @@ function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::Inference
             newlabel = genlabel(sv)
             newlabels[a.label+1] = newlabel.label
             body.args[i] = newlabel
+        elseif isa(a,Expr) && a.head === :meta && a.args[1] === :push_lambda
+            push!(locs, ast.args[4][a.args[2]])
+            a.args[2] = length(locs)
         end
     end
     for i = 1:length(body.args)
@@ -2905,14 +2914,15 @@ function inlineable(f::ANY, ft::ANY, e::Expr, atypes::Vector{Any}, sv::Inference
         expr = lastexpr.args[1]
     end
 
-    if length(stmts) == 1
-        # remove line number when inlining a single expression. see issue #13725
-        s = stmts[1]
-        if isa(s,Expr)&&is(s.head,:line) || isa(s,LineNumberNode)
-            pop!(stmts)
-        end
+   if length(stmts) >= 0
+       if length(stmts) == 1 && (isa(stmts[1],Expr) && stmts[1].head === :line || isa(stmts[1], LineNumberNode))
+           empty!(stmts)
+       else
+           push!(locs, svec(linfo, atypes))
+           unshift!(stmts,Expr(:meta, :push_lambda, length(locs)))
+           push!(stmts, Expr(:meta, :pop_lambda))
+       end
     end
-
     if !isempty(stmts) && !propagate_inbounds
         # inlined statements are out-of-bounds by default
         unshift!(stmts, Expr(:inbounds, false))
@@ -2987,7 +2997,7 @@ end
 
 const corenumtype = Union{Int32,Int64,Float32,Float64}
 
-function inlining_pass(e::Expr, sv, ast)
+function inlining_pass(e::Expr, sv, ast, locs)
     if e.head === :method
         # avoid running the inlining pass on function definitions
         return (e,())
@@ -3002,7 +3012,7 @@ function inlining_pass(e::Expr, sv, ast)
         while i <= length(eargs)
             ei = eargs[i]
             if isa(ei,Expr)
-                res = inlining_pass(ei, sv, ast)
+                res = inlining_pass(ei, sv, ast, locs)
                 eargs[i] = res[1]
                 if isa(res[2],Array)
                     sts = res[2]::Array{Any,1}
@@ -3044,7 +3054,7 @@ function inlining_pass(e::Expr, sv, ast)
             else
                 argloc = eargs
             end
-            res = inlining_pass(ei::Expr, sv, ast)
+            res = inlining_pass(ei::Expr, sv, ast, locs)
             res1 = res[1]
             if has_stmts && !effect_free(res1, sv, false)
                 restype = exprtype(res1,sv)
@@ -3119,7 +3129,7 @@ function inlining_pass(e::Expr, sv, ast)
             (a === Bottom || isvarargtype(a)) && return (e, stmts)
             ata[i] = a
         end
-        res = inlineable(f, ft, e, ata, sv, ast)
+        res = inlineable(f, ft, e, ata, sv, ast, locs)
         if isa(res,Tuple)
             if isa(res[2],Array) && !isempty(res[2])
                 append!(stmts,res[2])

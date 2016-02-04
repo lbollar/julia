@@ -2046,7 +2046,19 @@ JL_DLLEXPORT jl_value_t *jl_compress_ast(jl_lambda_info_t *li, jl_value_t *ast)
     }
     tree_literal_values = li->def->roots;
     tree_enclosing_module = li->module;
-    jl_serialize_value(&dest, ast);
+
+    assert(jl_is_expr(ast));
+    assert(((jl_expr_t*)ast)->head == lambda_sym);
+    assert(((jl_expr_t*)ast)->etype == jl_any_type);
+
+    jl_array_t *args = ((jl_expr_t*)ast)->args;
+    if (jl_array_len(args) == 3)
+        jl_serialize_value(&dest, jl_nothing);
+    else
+        jl_serialize_value(&dest, jl_cellref(args, 3));
+    for (int i = 0; i < 3; i++) {
+        jl_serialize_value(&dest, jl_cellref(args, i));
+    }
 
     //jl_printf(JL_STDERR, "%d bytes, %d values\n", dest.size, vals->length);
 
@@ -2063,7 +2075,7 @@ JL_DLLEXPORT jl_value_t *jl_compress_ast(jl_lambda_info_t *li, jl_value_t *ast)
     return v;
 }
 
-JL_DLLEXPORT jl_value_t *jl_uncompress_ast(jl_lambda_info_t *li, jl_value_t *data)
+jl_value_t *jl_uncompress_ast_(jl_lambda_info_t *li, jl_value_t *data, int only_inline_info)
 {
     JL_SIGATOMIC_BEGIN();
     JL_LOCK(dump); // Might GC
@@ -2078,7 +2090,25 @@ JL_DLLEXPORT jl_value_t *jl_uncompress_ast(jl_lambda_info_t *li, jl_value_t *dat
     ios_setbuf(&src, (char*)bytes->data, jl_array_len(bytes), 0);
     src.size = jl_array_len(bytes);
     int en = jl_gc_enable(0); // Might GC
-    jl_value_t *v = jl_deserialize_value(&src, NULL);
+
+    jl_value_t *v;
+    jl_value_t *inlined_lambdas = jl_deserialize_value(&src, NULL);
+    if (only_inline_info) {
+        v = inlined_lambdas;
+    }
+    else {
+        jl_array_t *args = jl_alloc_cell_1d(inlined_lambdas == jl_nothing ? 3 : 4);
+        for (int i = 0; i < 3; i++)
+            jl_cellset(args, i, jl_deserialize_value(&src, NULL));
+        if (inlined_lambdas != jl_nothing)
+            jl_cellset(args, 3, inlined_lambdas);
+        jl_expr_t *ast = (jl_expr_t*)jl_new_struct_uninit(jl_expr_type);
+        ast->head = lambda_sym;
+        ast->args = args;
+        ast->etype = jl_any_type;
+        v = (jl_value_t*)ast;
+    }
+
     jl_gc_enable(en);
     tree_literal_values = NULL;
     tree_enclosing_module = NULL;
@@ -2086,6 +2116,11 @@ JL_DLLEXPORT jl_value_t *jl_uncompress_ast(jl_lambda_info_t *li, jl_value_t *dat
     JL_UNLOCK(dump);
     JL_SIGATOMIC_END();
     return v;
+}
+
+JL_DLLEXPORT jl_value_t *jl_uncompress_ast(jl_lambda_info_t *li, jl_value_t *data)
+{
+    return jl_uncompress_ast_(li, data, 0);
 }
 
 JL_DLLEXPORT int jl_save_incremental(const char *fname, jl_array_t *worklist)

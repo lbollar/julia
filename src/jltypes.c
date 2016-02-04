@@ -3569,6 +3569,7 @@ void jl_init_types(void)
     jl_compute_field_offsets(jl_simplevector_type);
     jl_simplevector_type->pointerfree = 0;
 
+    empty_sym = jl_symbol("");
     call_sym = jl_symbol("call");
     quote_sym = jl_symbol("quote");
     inert_sym = jl_symbol("inert");
