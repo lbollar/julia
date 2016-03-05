@@ -1216,7 +1216,12 @@ jl_methlist_t *jl_method_list_insert(jl_methlist_t **pml, jl_tupletype_t *type,
     JL_SIGATOMIC_BEGIN();
     JL_GC_PUSH1(&newrec);
     *pl = newrec;
-    jl_gc_wb(pa, newrec);
+    if (jl_is_array(pa)) {
+        jl_gc_wb_array((jl_array_t*)pa, (jl_value_t**)pl);
+    }
+    else {
+        jl_gc_wb(pa, newrec);
+    }
     // if this contains Union types, methods after it might actually be
     // more specific than it. we need to re-sort them.
     if (has_unions(type)) {
@@ -1299,20 +1304,22 @@ jl_methlist_t *jl_method_table_insert(jl_methtable_t *mt, jl_tupletype_t *type,
     remove_conflicting(&mt->cache, (jl_value_t*)type);
     jl_gc_wb(mt, mt->cache);
     if (mt->cache_arg1 != (void*)jl_nothing) {
-        for(int i=0; i < jl_array_len(mt->cache_arg1); i++) {
-            jl_methlist_t **pl = &((jl_methlist_t**)jl_array_data(mt->cache_arg1))[i];
+        jl_array_t *cache = (jl_array_t*)mt->cache_arg1;
+        for(int i=0; i < jl_array_len(cache); i++) {
+            jl_methlist_t **pl = &((jl_methlist_t**)jl_array_data(cache))[i];
             if (*pl && *pl != (void*)jl_nothing) {
                 remove_conflicting(pl, (jl_value_t*)type);
-                jl_gc_wb(mt->cache_arg1, jl_cellref(mt->cache_arg1,i));
+                jl_gc_wb_array(cache, ((jl_value_t**)jl_array_data(cache)) + i);
             }
         }
     }
     if (mt->cache_targ != (void*)jl_nothing) {
-        for(int i=0; i < jl_array_len(mt->cache_targ); i++) {
-            jl_methlist_t **pl = &((jl_methlist_t**)jl_array_data(mt->cache_targ))[i];
+        jl_array_t *cache = (jl_array_t*)mt->cache_targ;
+        for(int i=0; i < jl_array_len(cache); i++) {
+            jl_methlist_t **pl = &((jl_methlist_t**)jl_array_data(cache))[i];
             if (*pl && *pl != (void*)jl_nothing) {
                 remove_conflicting(pl, (jl_value_t*)type);
-                jl_gc_wb(mt->cache_targ, jl_cellref(mt->cache_targ,i));
+                jl_gc_wb_array(cache, ((jl_value_t**)jl_array_data(cache)) + i);
             }
         }
     }

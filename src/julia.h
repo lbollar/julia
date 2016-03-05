@@ -566,14 +566,8 @@ JL_DLLEXPORT void jl_clear_malloc_data(void);
 
 // GC write barriers
 JL_DLLEXPORT void jl_gc_queue_root(jl_value_t *root); // root isa jl_value_t*
-
-STATIC_INLINE void jl_gc_wb(void *parent, void *ptr)
-{
-    // parent and ptr isa jl_value_t*
-    if (__unlikely((jl_astaggedvalue(parent)->gc_bits & 1) == 1 &&
-                   (jl_astaggedvalue(ptr)->gc_bits & 1) == 0))
-        jl_gc_queue_root((jl_value_t*)parent);
-}
+STATIC_INLINE void jl_gc_wb(void *parent, void *ptr);
+STATIC_INLINE void jl_gc_wb_array(jl_array_t *parent, jl_value_t **ptr);
 
 STATIC_INLINE void jl_gc_wb_back(void *ptr) // ptr isa jl_value_t*
 {
@@ -632,12 +626,10 @@ STATIC_INLINE jl_value_t *jl_cellref(void *a, size_t i)
 STATIC_INLINE jl_value_t *jl_cellset(void *a, size_t i, void *x)
 {
     assert(i < jl_array_len(a));
-    ((jl_value_t**)(jl_array_data(a)))[i] = (jl_value_t*)x;
+    jl_value_t **slot = &((jl_value_t**)(jl_array_data(a)))[i];
+    *slot = (jl_value_t*)x;
     if (x) {
-        if (((jl_array_t*)a)->flags.how == 3) {
-            a = jl_array_data_owner(a);
-        }
-        jl_gc_wb(a, x);
+        jl_gc_wb_array((jl_array_t*)a, slot);
     }
     return (jl_value_t*)x;
 }
@@ -1606,6 +1598,32 @@ typedef struct {
     uint8_t isnull;
     float value;
 } jl_nullable_float32_t;
+
+STATIC_INLINE void jl_gc_wb(void *parent, void *ptr)
+{
+    assert(!jl_array_typename || !jl_is_array(parent));
+    // parent and ptr isa jl_value_t*
+    if (__unlikely((jl_astaggedvalue(parent)->gc_bits & 1) == 1 &&
+                   (jl_astaggedvalue(ptr)->gc_bits & 1) == 0))
+        jl_gc_queue_root((jl_value_t*)parent);
+}
+
+STATIC_INLINE void jl_gc_wb_array(jl_array_t *parent, jl_value_t **slot)
+{
+    // This assertion can fail during sysimg deserialization
+    // assert(jl_is_array(parent));
+    assert(parent->flags.ptrarray);
+    assert(((intptr_t)slot) % sizeof(void*) == 0);
+    assert((jl_value_t**)parent->data <= slot &&
+           ((jl_value_t**)parent->data) + jl_array_len(parent) > slot);
+    if (parent->flags.how == 3)
+        parent = (jl_array_t*)jl_array_data_owner(parent);
+    jl_value_t *ptr = *slot;
+    // parent and ptr isa jl_value_t*
+    if (__unlikely((jl_astaggedvalue(parent)->gc_bits & 1) == 1 &&
+                   (jl_astaggedvalue(ptr)->gc_bits & 1) == 0))
+        jl_gc_queue_root((jl_value_t*)parent);
+}
 
 #ifdef __cplusplus
 }

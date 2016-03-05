@@ -23,9 +23,10 @@ void jl_idtable_rehash(jl_array_t **pa, size_t newsz)
     JL_GC_PUSH1(&newa);
     for(i=0; i < sz; i+=2) {
         if (ol[i+1] != NULL) {
-            (*jl_table_lookup_bp(&newa, ol[i])) = ol[i+1];
-            jl_gc_wb(newa, ol[i+1]);
-             // it is however necessary here because allocation
+            jl_value_t **slot = (jl_value_t**)jl_table_lookup_bp(&newa, ol[i]);
+            *slot = (jl_value_t*)ol[i+1];
+            jl_gc_wb_array(newa, slot);
+            // it is however necessary here because allocation
             // can (and will) occur in a recursive call inside table_lookup_bp
         }
     }
@@ -57,7 +58,7 @@ static void **jl_table_lookup_bp(jl_array_t **pa, void *key)
     do {
         if (tab[index+1] == NULL) {
             tab[index] = key;
-            jl_gc_wb(a, key);
+            jl_gc_wb_array(a, (jl_value_t**)&tab[index]);
             return &tab[index+1];
         }
 
@@ -128,7 +129,7 @@ jl_array_t *jl_eqtable_put(jl_array_t *h, void *key, void *val)
     // &h may be assigned to in jl_idtable_rehash so it need to be rooted
     void **bp = jl_table_lookup_bp(&h, key);
     *bp = val;
-    jl_gc_wb(h, val);
+    jl_gc_wb_array(h, (jl_value_t**)bp);
     JL_GC_POP();
     return h;
 }

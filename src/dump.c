@@ -1375,7 +1375,7 @@ static jl_value_t *jl_deserialize_value_(ios_t *s, jl_value_t *vtag, jl_value_t 
             jl_value_t **data = (jl_value_t**)jl_array_data(a);
             for(i=0; i < jl_array_len(a); i++) {
                 data[i] = jl_deserialize_value(s, &data[i]);
-                if (data[i]) jl_gc_wb(a, data[i]);
+                if (data[i]) jl_gc_wb_array(a, &data[i]);
             }
         }
         return (jl_value_t*)a;
@@ -1762,6 +1762,7 @@ static void jl_reinit_item(ios_t *f, jl_value_t *v, int how) {
                 jl_array_t **a = (jl_array_t**)v;
                 // Assume *a don't need a write barrier
                 jl_idtable_rehash(a, jl_array_len(*a));
+                // v is a ObjectIdDict
                 jl_gc_wb(v, *a);
                 break;
             }

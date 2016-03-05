@@ -514,12 +514,9 @@ JL_DLLEXPORT void jl_arrayset(jl_array_t *a, jl_value_t *rhs, size_t i)
         jl_assign_bits(&((char*)a->data)[i*a->elsize], rhs);
     }
     else {
-        ((jl_value_t**)a->data)[i] = rhs;
-        jl_value_t *owner = (jl_value_t*)a;
-        if (a->flags.how == 3) {
-            owner = jl_array_data_owner(a);
-        }
-        jl_gc_wb(owner, rhs);
+        jl_value_t **slot = ((jl_value_t**)a->data) + i;
+        *slot = rhs;
+        jl_gc_wb_array(a, slot);
     }
 }
 

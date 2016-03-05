@@ -481,8 +481,10 @@ JL_CALLABLE(jl_f__apply)
             for(j=0; j < al; j++) {
                 // jl_fieldref may allocate.
                 newargs[n++] = jl_fieldref(ai, j);
-                if (arg_heap)
+                if (arg_heap) {
+                    // use obj wb since newargs is a svec and not array
                     jl_gc_wb(arg_heap, newargs[n - 1]);
+                }
             }
         }
         else {
@@ -502,8 +504,10 @@ JL_CALLABLE(jl_f__apply)
             else {
                 for (j = 0; j < al; j++) {
                     newargs[n++] = jl_arrayref(aai, j);
-                    if (arg_heap)
+                    if (arg_heap) {
+                        // use obj wb since newargs is a svec and not array
                         jl_gc_wb(arg_heap, newargs[n - 1]);
+                    }
                 }
             }
         }
@@ -1088,7 +1092,8 @@ jl_value_t *jl_mk_builtin_func(const char *name, jl_fptr_t fptr)
     li->fptr = fptr;
     li->name = sname;
     // TODO jb/functions: what should li->ast be?
-    li->ast = (jl_value_t*)jl_exprn(lambda_sym,0); jl_gc_wb(li, li->ast);
+    li->ast = (jl_value_t*)jl_exprn(lambda_sym,0);
+    jl_gc_wb(li, li->ast);
     jl_method_cache_insert(jl_gf_mtable(f), jl_anytuple_type, li);
     return f;
 }
