@@ -72,7 +72,9 @@ static jl_array_t *_new_array_(jl_value_t *atype, uint32_t ndims, size_t *dims,
     }
 
     int ndimwords = jl_array_ndimwords(ndims);
-    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t), JL_CACHE_BYTE_ALIGNMENT);
+    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t) +
+                             (isunboxed ? 0 : sizeof(void*)),
+                             JL_CACHE_BYTE_ALIGNMENT);
     if (tot <= ARRAY_INLINE_NBYTES) {
         if (isunboxed && elsz >= 4)
             tsz = JL_ARRAY_ALIGN(tsz, JL_SMALL_BYTE_ALIGNMENT); // align data area
@@ -151,15 +153,16 @@ JL_DLLEXPORT jl_array_t *jl_reshape_array(jl_value_t *atype, jl_array_t *data,
     size_t ndims = jl_nfields(dims);
 
     int ndimwords = jl_array_ndimwords(ndims);
-    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t) + sizeof(void*), JL_SMALL_BYTE_ALIGNMENT);
+    jl_value_t *el_type = jl_tparam0(atype);
+    int isunboxed = store_unboxed(el_type);
+    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t) + sizeof(void*) + (isunboxed ? 0 : sizeof(void*)), JL_SMALL_BYTE_ALIGNMENT);
     a = (jl_array_t*)jl_gc_allocobj(tsz);
     jl_set_typeof(a, atype);
     a->flags.ndims = ndims;
     a->offset = 0;
     a->data = NULL;
     a->flags.isaligned = data->flags.isaligned;
-    jl_value_t *el_type = jl_tparam0(atype);
-    if (store_unboxed(el_type)) {
+    if (isunboxed) {
         a->elsize = jl_datatype_size(el_type);
         a->flags.ptrarray = 0;
     }
@@ -172,10 +175,10 @@ JL_DLLEXPORT jl_array_t *jl_reshape_array(jl_value_t *atype, jl_array_t *data,
     // if data is itself a shared wrapper,
     // owner should point back to the original array
     if (owner->flags.how == 3) {
-        owner = (jl_array_t*)jl_array_data_owner(owner);
+        owner = (jl_array_t*)jl_array_data_owner(owner, !isunboxed);
     }
     assert(owner->flags.how != 3);
-    jl_array_data_owner(a) = (jl_value_t*)owner;
+    jl_array_data_owner(a, !isunboxed) = (jl_value_t*)owner;
 
     a->flags.how = 3;
     a->data = data->data;
@@ -224,7 +227,9 @@ JL_DLLEXPORT jl_array_t *jl_ptr_to_array_1d(jl_value_t *atype, void *data,
         elsz = sizeof(void*);
 
     int ndimwords = jl_array_ndimwords(1);
-    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t), JL_CACHE_BYTE_ALIGNMENT);
+    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t) +
+                             (isunboxed ? 0 : sizeof(void*)),
+                             JL_CACHE_BYTE_ALIGNMENT);
     a = (jl_array_t*)jl_gc_allocobj(tsz);
     jl_set_typeof(a, atype);
     a->data = data;
@@ -290,7 +295,9 @@ JL_DLLEXPORT jl_array_t *jl_ptr_to_array(jl_value_t *atype, void *data,
         elsz = sizeof(void*);
 
     int ndimwords = jl_array_ndimwords(ndims);
-    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t), JL_CACHE_BYTE_ALIGNMENT);
+    int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t) +
+                             (isunboxed ? 0 : sizeof(void*)),
+                             JL_CACHE_BYTE_ALIGNMENT);
     a = (jl_array_t*)jl_gc_allocobj(tsz);
     jl_set_typeof(a, atype);
     a->data = data;
@@ -763,7 +770,12 @@ JL_DLLEXPORT void jl_cell_1d_push2(jl_array_t *a, jl_value_t *b, jl_value_t *c)
 
 JL_DLLEXPORT jl_value_t *(jl_array_data_owner)(jl_array_t *a)
 {
-    return jl_array_data_owner(a);
+    return jl_array_data_owner(a, a->flags.ptrarray);
+}
+
+JL_DLLEXPORT uint8_t *(jl_array_cards)(jl_array_t *a)
+{
+    return jl_array_cards(a);
 }
 
 #ifdef __cplusplus

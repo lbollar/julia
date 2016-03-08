@@ -1807,7 +1807,7 @@ static int push_root(jl_value_t *v, int d, int bits)
                      scanned_bytes += array_nbytes(a);
              });
         if (a->flags.how == 3) {
-            jl_value_t *owner = jl_array_data_owner(a);
+            jl_value_t *owner = jl_array_data_owner(a, a->flags.ptrarray);
             refyoung |= gc_push_root(owner, d);
             goto ret;
         }

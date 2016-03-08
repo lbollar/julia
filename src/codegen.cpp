@@ -283,6 +283,7 @@ static MDNode *tbaa_arrayptr;               // The pointer inside a jl_array_t
 static MDNode *tbaa_arraysize;              // A size in a jl_array_t
 static MDNode *tbaa_arraylen;               // The len in a jl_array_t
 static MDNode *tbaa_arrayflags;             // The flags in a jl_array_t
+static MDNode *tbaa_arraycards;             // The card table ptr in a jl_array_t
 static MDNode *tbaa_sveclen;            // The len in a jl_svec_t
 static MDNode *tbaa_func;               // A jl_function_t
 static MDNode *tbaa_datatype;           // A jl_datatype_t
@@ -425,6 +426,7 @@ static Function *resetstkoflw_func;
 #endif
 static Function *diff_gc_total_bytes_func;
 static Function *jlarray_data_owner_func;
+static Function *jlarray_cards_func;
 
 // placeholder functions
 static Function *gcroot_func;
@@ -2695,7 +2697,7 @@ static bool emit_builtin_call(jl_cgval_t *ret, jl_value_t *f, jl_value_t **args,
                                     builder.CreateBitCast(
                                         builder.CreateConstGEP1_32(
                                             builder.CreateBitCast(aryv, T_pint8),
-                                            jl_array_data_owner_offset(nd)),
+                                            jl_array_data_owner_offset(nd, 1)),
                                         T_ppjlvalue));
                             }
                             else {
@@ -5214,6 +5216,7 @@ static void init_julia_llvm_env(Module *m)
     tbaa_arraysize = tbaa_make_child("jtbaa_arraysize",tbaa_array);
     tbaa_arraylen = tbaa_make_child("jtbaa_arraylen",tbaa_array);
     tbaa_arrayflags = tbaa_make_child("jtbaa_arrayflags",tbaa_array);
+    tbaa_arraycards = tbaa_make_child("jtbaa_arraycards",tbaa_array);
     tbaa_sveclen = tbaa_make_child("jtbaa_sveclen",tbaa_value);
     tbaa_func = tbaa_make_child("jtbaa_func",tbaa_value);
     tbaa_datatype = tbaa_make_child("jtbaa_datatype",tbaa_value);
@@ -5845,6 +5848,21 @@ static void init_julia_llvm_env(Module *m)
         .addAttribute(jlarray_data_owner_func->getContext(),
                       AttributeSet::FunctionIndex, Attribute::NoUnwind));
     add_named_global(jlarray_data_owner_func, jl_array_data_owner);
+
+    std::vector<Type*> array_cards_args(0);
+    array_cards_args.push_back(T_pjlvalue);
+    jlarray_cards_func =
+        Function::Create(FunctionType::get(T_pint8, array_cards_args, false),
+                         Function::ExternalLinkage, "jl_array_cards", m);
+    jlarray_cards_func->setAttributes(
+        jlarray_cards_func->getAttributes()
+        .addAttribute(jlarray_cards_func->getContext(),
+                      AttributeSet::FunctionIndex, Attribute::ReadOnly)
+        .addAttribute(jlarray_cards_func->getContext(),
+                      AttributeSet::FunctionIndex, Attribute::ArgMemOnly)
+        .addAttribute(jlarray_cards_func->getContext(),
+                      AttributeSet::FunctionIndex, Attribute::NoUnwind));
+    add_named_global(jlarray_cards_func, jl_array_cards);
 
     gcroot_func =
         Function::Create(FunctionType::get(T_ppjlvalue, false),

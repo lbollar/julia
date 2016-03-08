@@ -149,6 +149,8 @@ typedef struct {
 
     // followed by alignment padding and inline data, or owner pointer
 } jl_array_t;
+// layout of an array object
+// [jl_array_t][dims][card table ptr if ptrarray][owner ptr if how == 3]
 // compute # of extra words needed to store dimensions
 STATIC_INLINE int jl_array_ndimwords(uint32_t ndims)
 {
@@ -615,8 +617,15 @@ JL_DLLEXPORT size_t jl_array_len_(jl_array_t *a);
 #define jl_array_dim0(a)  (((jl_array_t*)(a))->nrows)
 #define jl_array_nrows(a) (((jl_array_t*)(a))->nrows)
 #define jl_array_ndims(a) ((int32_t)(((jl_array_t*)a)->flags.ndims))
-#define jl_array_data_owner_offset(ndims) (offsetof(jl_array_t,ncols) + sizeof(size_t)*(1+jl_array_ndimwords(ndims))) // in bytes
-#define jl_array_data_owner(a) (*((jl_value_t**)((char*)a + jl_array_data_owner_offset(jl_array_ndims(a)))))
+#define jl_array_end_dims_offset(ndims)                                 \
+    (offsetof(jl_array_t, ncols) +                                      \
+     sizeof(size_t) * (1 + jl_array_ndimwords(ndims))) // in bytes
+#define jl_array_cards_offset(ndims) jl_array_end_dims_offset(ndims)
+#define jl_array_cards(a)                                               \
+    (*((uint8_t**)((char*)a + jl_array_cards_offset(jl_array_ndims(a)))))
+#define jl_array_data_owner_offset(ndims, isptr)                        \
+    (jl_array_end_dims_offset(ndims) + sizeof(size_t) * (isptr != 0)) // in bytes
+#define jl_array_data_owner(a, isptr) (*((jl_value_t**)((char*)a + jl_array_data_owner_offset(jl_array_ndims(a), isptr))))
 
 STATIC_INLINE jl_value_t *jl_cellref(void *a, size_t i)
 {
@@ -1622,7 +1631,7 @@ STATIC_INLINE void jl_gc_wb_array(jl_array_t *parent, jl_value_t **slot)
     assert((jl_value_t**)parent->data <= slot &&
            ((jl_value_t**)parent->data) + jl_array_len(parent) > slot);
     if (parent->flags.how == 3)
-        parent = (jl_array_t*)jl_array_data_owner(parent);
+        parent = (jl_array_t*)jl_array_data_owner(parent, 1);
     jl_value_t *ptr = *slot;
     // parent and ptr isa jl_value_t*
     if (__unlikely((jl_astaggedvalue(parent)->gc_bits & 1) == 1 &&
