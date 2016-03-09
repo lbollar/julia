@@ -1070,6 +1070,7 @@ static void sweep_big(int sweep_mask)
 
 void jl_gc_track_malloced_array(jl_array_t *a)
 {
+    // This is **NOT** a GC safe point.
     FOR_CURRENT_HEAP () {
         mallocarray_t *ma;
         if (mafreelist == NULL) {
