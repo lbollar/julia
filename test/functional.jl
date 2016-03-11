@@ -88,7 +88,7 @@ let s = "hello"
     @test collect(rest(s, st)) == ['e','l','l','o']
 end
 
-@test_throws MethodError collect(rest(countfrom(1), 5)) 
+@test_throws MethodError collect(rest(countfrom(1), 5))
 
 # countfrom
 # ---------

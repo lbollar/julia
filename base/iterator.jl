@@ -10,7 +10,7 @@ _min_length(a, b, A, B) = min(length(a),length(b))
 _diff_length(a, b, A, ::IsInfinite) = 0
 _diff_length(a, b, ::IsInfinite, ::IsInfinite) = 0
 _diff_length(a, b, ::IsInfinite, B) = length(a) # inherit behaviour, error
-_diff_length(a, b, A, B) = max(length(a)-length(b), 0) 
+_diff_length(a, b, A, B) = max(length(a)-length(b), 0)
 
 # enumerate
 
