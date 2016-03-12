@@ -44,19 +44,18 @@ static jl_array_t *_new_array_(jl_value_t *atype, uint32_t ndims, size_t *dims,
                                int isunboxed, int elsz)
 {
     size_t i, tot, nel=1;
-    wideint_t prod;
     void *data;
     jl_array_t *a;
 
     for(i=0; i < ndims; i++) {
-        prod = (wideint_t)nel * (wideint_t)dims[i];
+        wideint_t prod = (wideint_t)nel * (wideint_t)dims[i];
         if (prod > (wideint_t) MAXINTVAL)
             jl_error("invalid Array dimensions");
         nel = prod;
     }
 
     if (isunboxed) {
-        prod = (wideint_t)elsz * (wideint_t)nel;
+        wideint_t prod = (wideint_t)elsz * (wideint_t)nel;
         if (prod > (wideint_t) MAXINTVAL)
             jl_error("invalid Array size");
         tot = prod;
@@ -66,7 +65,7 @@ static jl_array_t *_new_array_(jl_value_t *atype, uint32_t ndims, size_t *dims,
         }
     }
     else {
-        prod = (wideint_t)sizeof(void*) * (wideint_t)nel;
+        wideint_t prod = (wideint_t)sizeof(void*) * (wideint_t)nel;
         if (prod > (wideint_t) MAXINTVAL)
             jl_error("invalid Array size");
         tot = prod;
@@ -173,7 +172,6 @@ JL_DLLEXPORT jl_array_t *jl_reshape_array(jl_value_t *atype, jl_array_t *data,
         a->elsize = sizeof(void*);
         a->flags.ptrarray = 1;
     }
-    JL_GC_PUSH1(&a);
 
     jl_array_t *owner = data;
     // if data is itself a shared wrapper,
@@ -212,7 +210,6 @@ JL_DLLEXPORT jl_array_t *jl_reshape_array(jl_value_t *atype, jl_array_t *data,
         a->length = l;
 #endif
     }
-    JL_GC_POP();
 
     return a;
 }
@@ -260,20 +257,36 @@ JL_DLLEXPORT jl_array_t *jl_ptr_to_array_1d(jl_value_t *atype, void *data,
     return a;
 }
 
-JL_DLLEXPORT jl_array_t *jl_ptr_to_array(jl_value_t *atype, void *data,
-                                         jl_value_t *dims, int own_buffer)
+static inline int is_ntuple_long(jl_value_t *v)
 {
-    size_t i, elsz, nel=1;
-    jl_array_t *a;
-    size_t ndims = jl_nfields(dims);
-    wideint_t prod;
+    if (!jl_is_tuple(v))
+        return 0;
+    size_t nfields = jl_nfields(v);
+    for (size_t i = 0;i < nfields;i++) {
+        if (jl_field_type(jl_typeof(v), i) != (jl_value_t*)jl_long_type) {
+            return 0;
+        }
+    }
+    return 1;
+}
 
-    for(i=0; i < ndims; i++) {
-        prod = (wideint_t)nel * (wideint_t)jl_unbox_long(jl_fieldref(dims, i));
+JL_DLLEXPORT jl_array_t *jl_ptr_to_array(jl_value_t *atype, void *data,
+                                         jl_value_t *_dims, int own_buffer)
+{
+    size_t elsz, nel = 1;
+    jl_array_t *a;
+    size_t ndims = jl_nfields(_dims);
+    wideint_t prod;
+    assert(is_ntuple_long(_dims));
+    size_t *dims = (size_t*)_dims;
+    for (size_t i = 0;i < ndims;i++) {
+        prod = (wideint_t)nel * (wideint_t)dims[i];
         if (prod > (wideint_t) MAXINTVAL)
             jl_error("invalid Array dimensions");
         nel = prod;
     }
+    if (__unlikely(ndims == 1))
+        return jl_ptr_to_array_1d(atype, data, nel, own_buffer);
     jl_value_t *el_type = jl_tparam0(atype);
 
     int isunboxed = store_unboxed(el_type);
@@ -306,30 +319,16 @@ JL_DLLEXPORT jl_array_t *jl_ptr_to_array(jl_value_t *atype, void *data,
         a->flags.how = 0;
     }
 
-    if (ndims == 1) {
-        a->nrows = nel;
-        a->maxsize = nel;
-    }
-    else {
-        size_t *adims = &a->nrows;
-        // jl_fieldref can allocate
-        JL_GC_PUSH1(&a);
-        for(i=0; i < ndims; i++) {
-            adims[i] = jl_unbox_long(jl_fieldref(dims, i));
-        }
-        JL_GC_POP();
-    }
+    assert(ndims != 1); // handled above
+    memcpy(&a->nrows, dims, ndims * sizeof(size_t));
     return a;
 }
 
-JL_DLLEXPORT jl_array_t *jl_new_array(jl_value_t *atype, jl_value_t *dims)
+JL_DLLEXPORT jl_array_t *jl_new_array(jl_value_t *atype, jl_value_t *_dims)
 {
-    size_t ndims = jl_nfields(dims);
-    size_t *adims = (size_t*)alloca(ndims*sizeof(size_t));
-    size_t i;
-    for(i=0; i < ndims; i++)
-        adims[i] = jl_unbox_long(jl_fieldref(dims,i));
-    return _new_array(atype, ndims, adims);
+    size_t ndims = jl_nfields(_dims);
+    assert(is_ntuple_long(_dims));
+    return _new_array(atype, ndims, (size_t*)_dims);
 }
 
 JL_DLLEXPORT jl_array_t *jl_alloc_array_1d(jl_value_t *atype, size_t nr)
