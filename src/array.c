@@ -95,9 +95,6 @@ static jl_array_t *_new_array_(jl_value_t *atype, uint32_t ndims, size_t *dims,
         // temporarily initialize to make gc-safe
         a->data = NULL;
         a->flags.how = 2;
-        // Make sure the GC can correctly identify if this is pool allocated
-        // and mark the page accordingly
-        a->flags.pooled = tsz <= GC_MAX_SZCLASS;
 
         data = jl_gc_managed_malloc(tot);
         jl_gc_track_malloced_array(a);
@@ -105,7 +102,6 @@ static jl_array_t *_new_array_(jl_value_t *atype, uint32_t ndims, size_t *dims,
             memset(data, 0, tot);
         JL_GC_POP();
     }
-    a->flags.pooled = tsz <= GC_MAX_SZCLASS;
 
     a->data = data;
     if (elsz == 1) ((char*)data)[tot-1] = '\0';
@@ -158,7 +154,6 @@ JL_DLLEXPORT jl_array_t *jl_reshape_array(jl_value_t *atype, jl_array_t *data,
     int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t) + sizeof(void*), JL_SMALL_BYTE_ALIGNMENT);
     a = (jl_array_t*)jl_gc_allocobj(tsz);
     jl_set_typeof(a, atype);
-    a->flags.pooled = tsz <= GC_MAX_SZCLASS;
     a->flags.ndims = ndims;
     a->offset = 0;
     a->data = NULL;
@@ -232,7 +227,6 @@ JL_DLLEXPORT jl_array_t *jl_ptr_to_array_1d(jl_value_t *atype, void *data,
     int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t), JL_CACHE_BYTE_ALIGNMENT);
     a = (jl_array_t*)jl_gc_allocobj(tsz);
     jl_set_typeof(a, atype);
-    a->flags.pooled = tsz <= GC_MAX_SZCLASS;
     a->data = data;
 #ifdef STORE_ARRAY_LEN
     a->length = nel;
@@ -299,7 +293,6 @@ JL_DLLEXPORT jl_array_t *jl_ptr_to_array(jl_value_t *atype, void *data,
     int tsz = JL_ARRAY_ALIGN(sizeof(jl_array_t) + ndimwords*sizeof(size_t), JL_CACHE_BYTE_ALIGNMENT);
     a = (jl_array_t*)jl_gc_allocobj(tsz);
     jl_set_typeof(a, atype);
-    a->flags.pooled = tsz <= GC_MAX_SZCLASS;
     a->data = data;
 #ifdef STORE_ARRAY_LEN
     a->length = nel;

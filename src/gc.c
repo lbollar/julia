@@ -1801,31 +1801,16 @@ static int push_root(jl_value_t *v, int d, int bits)
         jl_array_t *a = (jl_array_t*)v;
         jl_taggedvalue_t *o = jl_astaggedvalue(v);
         int todo = !(bits & GC_MARKED);
-        if (a->flags.pooled)
-#ifdef MEMDEBUG
-#define _gc_setmark_pool gc_setmark_big
-#else
-#define _gc_setmark_pool gc_setmark_pool
-#endif
-            MARK(a,
-                 bits = _gc_setmark_pool(o, GC_MARKED_NOESC);
-                 if (a->flags.how == 2 && todo) {
-                     objprofile_count(jl_malloc_tag, gc_bits(o) == GC_MARKED, array_nbytes(a));
-                     if (gc_bits(o) == GC_MARKED)
-                         perm_scanned_bytes += array_nbytes(a);
-                     else
-                         scanned_bytes += array_nbytes(a);
-                 });
-        else
-            MARK(a,
-                 bits = gc_setmark_big(o, GC_MARKED_NOESC);
-                 if (a->flags.how == 2 && todo) {
-                     objprofile_count(jl_malloc_tag, gc_bits(o) == GC_MARKED, array_nbytes(a));
-                     if (gc_bits(o) == GC_MARKED)
-                         perm_scanned_bytes += array_nbytes(a);
-                     else
-                         scanned_bytes += array_nbytes(a);
-                 });
+        MARK(a,
+             bits = (find_region(a, 1) ? gc_setmark_pool(o, GC_MARKED_NOESC) :
+                     gc_setmark_big(o, GC_MARKED_NOESC));
+             if (a->flags.how == 2 && todo) {
+                 objprofile_count(jl_malloc_tag, gc_bits(o) == GC_MARKED, array_nbytes(a));
+                 if (gc_bits(o) == GC_MARKED)
+                     perm_scanned_bytes += array_nbytes(a);
+                 else
+                     scanned_bytes += array_nbytes(a);
+             });
         if (a->flags.how == 3) {
             jl_value_t *owner = jl_array_data_owner(a);
             refyoung |= gc_push_root(owner, d);
