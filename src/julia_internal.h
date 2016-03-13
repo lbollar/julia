@@ -512,6 +512,17 @@ STATIC_INLINE void jl_free_aligned(void *p)
 }
 #endif
 
+#define GC_CLEAN 0 // freshly allocated
+#define GC_MARKED 1 // reachable and old
+#define GC_QUEUED 2 // if it is reachable it will be marked as old
+#define GC_MARKED_NOESC (GC_MARKED | GC_QUEUED) // reachable and young
+
+static inline int jl_gc_is_old(jl_value_t *o)
+{
+    uint8_t gc_bits = jl_astaggedvalue(o)->gc_bits & 3;
+    return gc_bits == GC_MARKED || gc_bits == GC_QUEUED;
+}
+
 #define JL_SMALL_BYTE_ALIGNMENT 16
 #define JL_CACHE_BYTE_ALIGNMENT 64
 

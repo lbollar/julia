@@ -1608,6 +1608,11 @@ STATIC_INLINE void jl_gc_wb(void *parent, void *ptr)
         jl_gc_queue_root((jl_value_t*)parent);
 }
 
+// 2^9 = 512 bytes per card (64/128 pointers)
+#define JL_GC_ARRAY_CARD_SHIFT (9)
+#define JL_GC_ARRAY_CARD_SIZE (1 << JL_GC_ARRAY_CARD_SHIFT)
+#define JL_GC_ARRAY_CARD_NPTR (JL_GC_ARRAY_CARD_SIZE / sizeof(void*))
+
 STATIC_INLINE void jl_gc_wb_array(jl_array_t *parent, jl_value_t **slot)
 {
     // This assertion can fail during sysimg deserialization
