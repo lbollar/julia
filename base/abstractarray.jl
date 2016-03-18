@@ -208,6 +208,13 @@ reshape(a::AbstractArray, dims::Int...) = reshape(a, dims)
 
 ## from general iterable to any array
 
+function copy!(dest, src)
+    for x in src
+        push!(dest, x)
+    end
+    return dest
+end
+
 function copy!(dest::AbstractArray, src)
     i = 1
     for x in src
@@ -1164,7 +1171,11 @@ function map!{F}(f::F, dest::AbstractArray, A::AbstractArray)
     return dest
 end
 
-map{F}(f::F, A::AbstractArray) = collect(Generator(f,A))
+# map on collections
+map(f, A::Union{AbstractArray,AbstractSet,Associative}) = collect_similar(A, Generator(f,A))
+
+# default to returning an Array for `map` on general iterators
+map(f, A) = collect(Generator(f,A))
 
 ## 2 argument
 function map!{F}(f::F, dest::AbstractArray, A::AbstractArray, B::AbstractArray)
@@ -1189,9 +1200,7 @@ end
 
 map!{F}(f::F, dest::AbstractArray, As::AbstractArray...) = map_n!(f, dest, As)
 
-spread(f) = (args)->f(args...)
-
-map(f, iters...) = collect(Generator(spread(f),zip(iters...)))
+map(f, iters...) = collect(Generator(f, iters...))
 
 # multi-item push!, unshift! (built on top of type-specific 1-item version)
 # (note: must not cause a dispatch loop when 1-item case is not defined)
