@@ -177,22 +177,44 @@ function RemoteCallbacks{P<:AbstractPayload}(credentials::Ptr{Void}, payload::Nu
     end
 end
 
-immutable FetchOptions
-    version::Cuint
-    callbacks::RemoteCallbacks
-    prune::Cint
-    update_fetchhead::Cint
-    download_tags::Cint
+if LibGit2.version() >= v"0.24.0"
+    immutable FetchOptions
+        version::Cuint
+        callbacks::RemoteCallbacks
+        prune::Cint
+        update_fetchhead::Cint
+        download_tags::Cint
+        custom_headers::StrArrayStruct
+    end
+    FetchOptions(; callbacks::RemoteCallbacks = RemoteCallbacks(),
+                   prune::Cint = Consts.FETCH_PRUNE_UNSPECIFIED,
+                   update_fetchhead::Cint = one(Cint),
+                   download_tags::Cint = Consts.REMOTE_DOWNLOAD_TAGS_AUTO,
+                   custom_headers::StrArrayStruct = StrArrayStruct()
+    ) = FetchOptions(one(Cuint),
+                     callbacks,
+                     prune,
+                     update_fetchhead,
+                     download_tags,
+                     custom_headers)
+else
+    immutable FetchOptions
+        version::Cuint
+        callbacks::RemoteCallbacks
+        prune::Cint
+        update_fetchhead::Cint
+        download_tags::Cint
+    end
+    FetchOptions(; callbacks::RemoteCallbacks = RemoteCallbacks(),
+                   prune::Cint = Consts.FETCH_PRUNE_UNSPECIFIED,
+                   update_fetchhead::Cint = one(Cint),
+                   download_tags::Cint = Consts.REMOTE_DOWNLOAD_TAGS_AUTO
+    ) = FetchOptions(one(Cuint),
+                     callbacks,
+                     prune,
+                     update_fetchhead,
+                     download_tags)
 end
-FetchOptions(; callbacks::RemoteCallbacks = RemoteCallbacks(),
-               prune::Cint = Consts.FETCH_PRUNE_UNSPECIFIED,
-               update_fetchhead::Cint = one(Cint),
-               download_tags::Cint = Consts.REMOTE_DOWNLOAD_TAGS_AUTO
-) = FetchOptions(one(Cuint),
-                 callbacks,
-                 prune,
-                 update_fetchhead,
-                 download_tags)
 
 immutable CloneOptions
     version::Cuint
@@ -235,7 +257,7 @@ immutable DiffOptionsStruct
     ignore_submodules::Cint
     pathspec::StrArrayStruct
     notify_cb::Ptr{Void}
-    notify_payload::Ptr{Void}
+    payload::Ptr{Void}
 
     # options controlling how the diff text is generated
     context_lines::UInt32
@@ -291,21 +313,21 @@ DiffDelta()=DiffDelta(Cint(0),Cuint(0),UInt16(0),UInt16(0),DiffFile(),DiffFile()
 
 immutable MergeOptions
     version::Cuint
-    tree_flags::Cint
+    flags::Cint
     rename_threshold::Cuint
     target_limit::Cuint
     metric::Ptr{Void}
     file_favor::Cint
     file_flags::Cuint
 end
-MergeOptions(; tree_flags::Cint = Cint(0),
+MergeOptions(; flags::Cint = Cint(0),
                rename_threshold::Cuint = Cuint(50),
                target_limit::Cuint = Cuint(200),
                metric::Ptr{Void} = C_NULL,
                file_favor::Cint = Cint(Consts.MERGE_FILE_FAVOR_NORMAL),
                file_flags::Cuint =Cuint(Consts.MERGE_FILE_DEFAULT)
 )=MergeOptions(one(Cuint),
-               tree_flags,
+               flags,
                rename_threshold,
                target_limit,
                metric,
