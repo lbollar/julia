@@ -410,14 +410,19 @@ function test_map(::Type{TestAbstractArray})
 
     # AbstractArray map for 2 arg case
     f(x, y) = x + y
-    A = Array(Int, 10)
     B = Float64[1:10...]
     C = Float64[1:10...]
     @test map(f, convert(Vector{Int},B), C) == Float64[ 2 * i for i in 1:10 ]
     @test map(f, Int[], Float64[]) == Union{}[]
     @test collect(Base.StreamMapIterator(f, Int[], Float64[])) == Float64[]
+    # map with different result tyoes
+    let m = map(x->x+1, Number[1, 2.0])
+        @test isa(m, Vector{Real})
+        @test m == Real[2, 3.0]
+    end
 
     # AbstractArray map for N-arg case
+    A = Array(Int, 10)
     f(x, y, z) = x + y + z
     D = Float64[1:10...]
 
